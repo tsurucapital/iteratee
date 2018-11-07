@@ -69,6 +69,9 @@ instance (Eq c) => Eq (Stream c) where
   (EOF (Just e1)) == (EOF (Just e2)) = typeOf e1 == typeOf e2
   _ == _                             = False
 
+instance Monoid c => Semigroup (Stream c) where
+  (<>) = mappend
+
 instance Monoid c => Monoid (Stream c) where
   mempty = Chunk mempty
   mappend (EOF mErr) _ = EOF mErr
@@ -177,6 +180,11 @@ instance (MonadMask m, Nullable s, NullPoint s) =>
 #endif
     mask q      = Iteratee $ \od oc -> CIO.mask $ \u -> runIter (q $ ilift u) od oc
     uninterruptibleMask q = Iteratee $ \od oc -> CIO.uninterruptibleMask $ \u -> runIter (q $ ilift u) od oc
+    generalBracket acquire release use = do
+      acq <- acquire
+      b <- use acq
+      c <- release acq (ExitCaseSuccess b)
+      return (b, c)
 
 -- |Send 'EOF' to the @Iteratee@ and disregard the unconsumed part of the
 -- stream.  If the iteratee is in an exception state, that exception is
@@ -215,15 +223,15 @@ mapIteratee f = lift . f . run
 {-# DEPRECATED mapIteratee "This function will be removed, compare to 'ilift'" #-}
 
 -- | Lift a computation in the inner monad of an iteratee.
--- 
+--
 -- A simple use would be to lift a logger iteratee to a monad stack.
--- 
+--
 -- > logger :: Iteratee String IO ()
 -- > logger = mapChunksM_ putStrLn
--- > 
+-- >
 -- > loggerG :: MonadIO m => Iteratee String m ()
 -- > loggerG = ilift liftIO logger
--- 
+--
 -- A more complex example would involve lifting an iteratee to work with
 -- interleaved streams.  See the example at 'Data.Iteratee.ListLike.merge'.
 ilift ::

@@ -1,8 +1,8 @@
-{-# LANGUAGE FlexibleContexts, BangPatterns, TupleSections #-}
+{-# LANGUAGE FlexibleContexts, BangPatterns, TupleSections, Rank2Types, ScopedTypeVariables #-}
 
 -- |Monadic Iteratees:
 -- incremental input parsers, processors and transformers
--- 
+--
 -- This module provides many basic iteratees from which more complicated
 -- iteratees can be built.  In general these iteratees parallel those in
 -- @Data.List@, with some additions.
@@ -125,11 +125,11 @@ stream2stream = icont (step mempty) Nothing
 -- predicate.
 -- If the stream is not terminated, the first character of the remaining stream
 -- satisfies the predicate.
--- 
+--
 -- N.B. 'breakE' should be used in preference to @break@.
 -- @break@ will retain all data until the predicate is met, which may
 -- result in a space leak.
--- 
+--
 -- The analogue of @List.break@
 
 break :: (Monad m, LL.ListLike s el) => (el -> Bool) -> Iteratee s m s
@@ -147,7 +147,7 @@ break cpred = icont (step mempty) Nothing
 
 -- |Attempt to read the next element of the stream and return it
 -- Raise a (recoverable) error if the stream is terminated
--- 
+--
 -- The analogue of @List.head@
 head :: (Monad m, LL.ListLike s el) => Iteratee s m el
 head = liftI step
@@ -160,7 +160,7 @@ head = liftI step
 
 -- |Attempt to read the last element of the stream and return it
 -- Raise a (recoverable) error if the stream is terminated
--- 
+--
 -- The analogue of @List.last@
 last :: (Monad m, LL.ListLike s el, Nullable s) => Iteratee s m el
 last = liftI (step Nothing)
@@ -234,7 +234,7 @@ roll t d = LL.singleton <$> joinI (take t stream2stream) <* drop (d-t)
 
 
 -- |Drop n elements of the stream, if there are that many.
--- 
+--
 -- The analogue of @List.drop@
 drop :: (Monad m, Nullable s, LL.ListLike s el) => Int -> Iteratee s m ()
 drop 0  = return ()
@@ -247,7 +247,7 @@ drop n' = liftI (step n')
 {-# INLINE drop #-}
 
 -- |Skip all elements while the predicate is true.
--- 
+--
 -- The analogue of @List.dropWhile@
 dropWhile :: (Monad m, LL.ListLike s el) => (el -> Bool) -> Iteratee s m ()
 dropWhile p = liftI step
@@ -262,9 +262,9 @@ dropWhile p = liftI step
 
 
 -- | Return the total length of the remaining part of the stream.
--- 
+--
 -- This forces evaluation of the entire stream.
--- 
+--
 -- The analogue of @List.length@
 length :: (Monad m, Num a, LL.ListLike s el) => Iteratee s m a
 length = liftI (step 0)
@@ -274,7 +274,7 @@ length = liftI (step 0)
 {-# INLINE length #-}
 
 -- | Get the length of the current chunk, or @Nothing@ if 'EOF'.
--- 
+--
 -- This function consumes no input.
 chunkLength :: (Monad m, LL.ListLike s el) => Iteratee s m (Maybe Int)
 chunkLength = liftI step
@@ -302,10 +302,10 @@ takeFromChunk n = liftI step
 
 -- |Takes an element predicate and an iteratee, running the iteratee
 -- on all elements of the stream until the predicate is met.
--- 
+--
 -- the following rule relates @break@ to @breakE@
 -- @break@ pred === @joinI@ (@breakE@ pred stream2stream)
--- 
+--
 -- @breakE@ should be used in preference to @break@ whenever possible.
 breakE
   :: (Monad m, LL.ListLike s el, NullPoint s)
@@ -325,7 +325,7 @@ breakE cpred = eneeCheckIfDone (liftI . step)
 -- |Read n elements from a stream and apply the given iteratee to the
 -- stream of the read elements. Unless the stream is terminated early, we
 -- read exactly n elements, even if the iteratee has accepted fewer.
--- 
+--
 -- The analogue of @List.take@
 take ::
   (Monad m, Nullable s, LL.ListLike s el)
@@ -355,22 +355,22 @@ take n' iter
 -- This is the variation of 'take' with the early termination
 -- of processing of the outer stream once the processing of the inner stream
 -- finished early.
--- 
+--
 -- Iteratees composed with 'takeUpTo' will consume only enough elements to
 -- reach a done state.  Any remaining data will be available in the outer
 -- stream.
--- 
+--
 -- > > let iter = do
 -- > h <- joinI $ takeUpTo 5 I.head
 -- > t <- stream2list
 -- > return (h,t)
--- > 
+-- >
 -- > > enumPureNChunk [1..10::Int] 3 iter >>= run >>= print
 -- > (1,[2,3,4,5,6,7,8,9,10])
--- > 
+-- >
 -- > > enumPureNChunk [1..10::Int] 7 iter >>= run >>= print
 -- > (1,[2,3,4,5,6,7,8,9,10])
--- 
+--
 -- in each case, @I.head@ consumes only one element, returning the remaining
 -- 4 elements to the outer stream
 takeUpTo :: (Monad m, Nullable s, LL.ListLike s el) => Int -> Enumeratee s s m a
@@ -410,7 +410,7 @@ takeUpTo i iter
 -- Given the stream of elements of the type @el@ and the function @(el->el')@,
 -- build a nested stream of elements of the type @el'@ and apply the
 -- given iteratee to it.
--- 
+--
 -- The analog of @List.map@
 mapStream
   :: (Monad m
@@ -429,7 +429,7 @@ mapStream f = eneeCheckIfDone (liftI . step)
 {-# SPECIALIZE mapStream :: Monad m => (el -> el') -> Enumeratee [el] [el'] m a #-}
 
 -- |Map the stream rigidly.
--- 
+--
 -- Like 'mapStream', but the element type cannot change.
 -- This function is necessary for @ByteString@ and similar types
 -- that cannot have 'LooseMap' instances, and may be more efficient.
@@ -449,7 +449,7 @@ rigidMapStream f = eneeCheckIfDone (liftI . step)
 
 -- |Creates an 'enumeratee' with only elements from the stream that
 -- satisfy the predicate function.  The outer stream is completely consumed.
--- 
+--
 -- The analogue of @List.filter@
 filter
   :: (Monad m, Nullable s, LL.ListLike s el)
@@ -472,13 +472,13 @@ group
   => Int  -- ^ size of group
   -> Enumeratee s [s] m a
 group sz iinit = liftI $ go iinit LL.empty
-  where go icurr pfx (Chunk s) = case gsplit (pfx `LL.append` s) of 
+  where go icurr pfx (Chunk s) = case gsplit (pfx `LL.append` s) of
           (full, partial) | LL.null full -> liftI $ go icurr partial
                           | otherwise    -> do inext <- lift $ enumPure1Chunk full icurr
                                                liftI $ go inext partial
-        go icurr pfx (EOF mex) 
+        go icurr pfx (EOF mex)
           | LL.null pfx = lift . enumChunk (EOF mex) $ icurr
-          | otherwise = do inext <- lift $ enumPure1Chunk (LL.singleton pfx) icurr        
+          | otherwise = do inext <- lift $ enumPure1Chunk (LL.singleton pfx) icurr
                            lift . enumChunk (EOF mex) $ inext
         gsplit ls = case LL.splitAt sz ls of
           (g, rest) | LL.null rest -> if LL.length g == sz
@@ -491,10 +491,10 @@ group sz iinit = liftI $ go iinit LL.empty
 
 -- | Creates an 'enumeratee' in which elements are grouped into
 -- contiguous blocks that are equal according to a predicate.
--- 
+--
 -- The analogue of 'List.groupBy'
 groupBy
-  :: (LL.ListLike s el, Monad m, Nullable s)
+  :: forall s el m a. (LL.ListLike s el, Monad m, Nullable s)
   => (el -> el -> Bool)
   -> Enumeratee s [s] m a
 groupBy same iinit = liftI $ go iinit LL.empty
@@ -503,10 +503,11 @@ groupBy same iinit = liftI $ go iinit LL.empty
                                               | LL.null full -> liftI $ go icurr partial
                                               | otherwise -> do inext <- lift . enumPure1Chunk full $ icurr
                                                                 liftI $ go inext partial
-          go icurr pfx (EOF mex) 
+          go icurr pfx (EOF mex)
             | LL.null pfx = lift . enumChunk (EOF mex) $ icurr
             | otherwise = do inext <- lift . enumPure1Chunk (LL.singleton pfx) $ icurr
                              lift . enumChunk (EOF mex) $ inext
+          gsplit :: s -> ([s], s)
           gsplit ll | LL.null ll = (LL.empty, LL.empty)
                     | otherwise = let groups = llGroupBy same ll
                                       full = LL.init groups
@@ -523,7 +524,7 @@ groupBy same iinit = liftI $ go iinit LL.empty
 -- | Merge offers another way to nest iteratees: as a monad stack.
 -- This allows for the possibility of interleaving data from multiple
 -- streams.
--- 
+--
 -- > -- print each element from a stream of lines.
 -- > logger :: (MonadIO m) => Iteratee [ByteString] m ()
 -- > logger = mapM_ (liftIO . putStrLn . B.unpack)
@@ -534,15 +535,15 @@ groupBy same iinit = liftI $ go iinit LL.empty
 -- > run =<< enumFile 10 "file1" (joinI $ enumLinesBS $
 -- >           ( enumFile 10 "file2" . joinI . enumLinesBS $ joinI
 -- >                 (ileaveLines logger)) >>= run)
--- > 
+-- >
 -- > ileaveLines :: (Functor m, Monad m)
 -- >   => Enumeratee [ByteString] [ByteString] (Iteratee [ByteString] m)
 -- >        [ByteString]
 -- > ileaveLines = merge (\l1 l2 ->
 -- >    [B.pack "f1:\n\t" ,l1 ,B.pack "f2:\n\t" ,l2 ]
--- > 
--- > 
--- 
+-- >
+-- >
+--
 merge ::
   (LL.ListLike s1 el1
    ,LL.ListLike s2 el2
@@ -556,11 +557,11 @@ merge f = convStream $ f <$> lift head <*> head
 {-# INLINE merge #-}
 
 -- | A version of merge which operates on chunks instead of elements.
--- 
+--
 -- mergeByChunks offers more control than 'merge'.  'merge' terminates
 -- when the first stream terminates, however mergeByChunks will continue
 -- until both streams are exhausted.
--- 
+--
 -- 'mergeByChunks' guarantees that both chunks passed to the merge function
 -- will have the same number of elements, although that number may vary
 -- between calls.
@@ -594,7 +595,7 @@ mergeByChunks f f1 f2 = unfoldConvStream iter (0 :: Int)
 -- Folds
 
 -- | Left-associative fold.
--- 
+--
 -- The analogue of @List.foldl@
 foldl
   :: (Monad m, LL.ListLike s el, FLL.FoldableLL s el)
@@ -612,7 +613,7 @@ foldl f i = liftI (step i)
 
 -- | Left-associative fold that is strict in the accumulator.
 -- This function should be used in preference to 'foldl' whenever possible.
--- 
+--
 -- The analogue of @List.foldl'@.
 foldl'
   :: (Monad m, LL.ListLike s el, FLL.FoldableLL s el)
@@ -629,7 +630,7 @@ foldl' f i = liftI (step i)
 
 -- | Variant of foldl with no base case.  Requires at least one element
 --   in the stream.
--- 
+--
 -- The analogue of @List.foldl1@.
 foldl1
   :: (Monad m, LL.ListLike s el, FLL.FoldableLL s el)
@@ -687,7 +688,7 @@ product = liftI (step 1)
 
 -- |Enumerate two iteratees over a single stream simultaneously.
 --  Deprecated, use `Data.Iteratee.ListLike.zip` instead.
--- 
+--
 -- Compare to @zip@.
 {-# DEPRECATED enumPair "use Data.Iteratee.ListLike.zip" #-}
 enumPair
@@ -699,7 +700,7 @@ enumPair = zip
 
 
 -- |Enumerate two iteratees over a single stream simultaneously.
--- 
+--
 -- Compare to @List.zip@.
 zip
   :: (Monad m, Nullable s, LL.ListLike s el)
@@ -763,9 +764,9 @@ zip5 a b c d e = zip a (zip4 b c d e) >>=
 -- is still consuming input.  The second iteratee will be terminated with EOF
 -- when the first iteratee has completed.  An example use is to determine
 -- how many elements an iteratee has consumed:
--- 
+--
 -- > snd <$> enumWith (dropWhile (<5)) length
--- 
+--
 -- Compare to @zip@
 enumWith
   :: (Monad m, Nullable s, LL.ListLike s el)
@@ -798,7 +799,7 @@ enumWith i1 i2 = go i1 i2
 -- |Enumerate a list of iteratees over a single stream simultaneously
 -- and discard the results. This is a different behavior than Prelude's
 -- sequence_ which runs iteratees in the list one after the other.
--- 
+--
 -- Compare to @Prelude.sequence_@.
 sequence_
   :: (Monad m, LL.ListLike s el, Nullable s)
