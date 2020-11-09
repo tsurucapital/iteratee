@@ -6,7 +6,7 @@ module Main where
 
 import Data.Iteratee
 import qualified Data.Iteratee.ListLike as I
-import Data.Iteratee.ListLike (enumPureNChunk, stream2list, stream2stream)
+import Data.Iteratee.ListLike (stream2list, stream2stream)
 import Data.Word
 import Data.Monoid
 import qualified Data.ByteString as BS
@@ -28,7 +28,7 @@ main = defaultMain [allListBenches, allByteStringBenches]
 -- for easy comparison of different streams.
 -- BDList is for creating baseline comparison functions.  Although the name
 -- is BDList, it will work for any stream type (e.g. bytestrings).
-data BD a b s (m :: * -> *) = BDIter1 String (a -> b) (Iteratee s m a) 
+data BD a b s (m :: * -> *) = BDIter1 String (a -> b) (Iteratee s m a)
   | BDIterN String Int (a -> b) (Iteratee s m a)
   | BDList String (s -> b) s
 
@@ -52,8 +52,6 @@ packedBS  = (BS.pack [1..defTotalSize])
 
 makeBenchBS (BDIter1 n eval i) = bench n $
   proc eval runIdentity (enumPure1Chunk packedBS) i
-makeBenchBS (BDIterN n csize eval i) = bench n $
-  proc eval runIdentity (enumPureNChunk packedBS csize) i
 makeBenchBS (BDList n f l) = error "makeBenchBS can't be called on BDList"
 
 proc :: (Functor m, Monad m)
@@ -175,9 +173,7 @@ map4 = idN "map head chunked" (I.joinI $ I.rigidMapStream id I.head)
 mapBenches = [map1, map2, map3, map4]
 
 foldB1 = idNl "foldl' sum" (I.foldl' (+) 0)
-foldB2 = idNl "mapReduce foldl' 2 sum" (getSum <$> I.mapReduce 2 (Sum . LL.foldl' (+) 0))
-foldB3 = idNl "mapReduce foldl' 4 sum" (getSum <$> I.mapReduce 4 (Sum . LL.foldl' (+) 0))
-foldBenches = [foldB1, foldB2, foldB3]
+foldBenches = [foldB1]
 
 conv1 = idN "convStream id head chunked" (I.joinI . I.convStream idChunk $ I.head)
 conv2 = idN "convStream id length chunked" (I.joinI . I.convStream idChunk $ I.length)

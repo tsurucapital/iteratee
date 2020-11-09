@@ -44,7 +44,6 @@ module Data.Iteratee.Exception (
   ,EnumException (..)
   ,DivergentException (..)
   ,EnumStringException (..)
-  ,EnumUnhandledIterException (..)
   -- ** Iteratee exceptions
   ,IException (..)
   ,IterException (..)
@@ -54,7 +53,6 @@ module Data.Iteratee.Exception (
   -- * Functions
   ,enStrExc
   ,iterStrExc
-  ,wrapIterExc
   ,iterExceptionToException
   ,iterExceptionFromException
 )
@@ -126,20 +124,6 @@ instance Exception EnumStringException where
 -- |Create an 'EnumException' from a string.
 enStrExc :: String -> EnumException
 enStrExc = EnumException . EnumStringException
-
--- |The enumerator received an 'IterException' it could not handle.
-data EnumUnhandledIterException = EnumUnhandledIterException IterException
-  deriving (Show, Typeable)
-
-instance Exception EnumUnhandledIterException where
-  toException   = enumExceptionToException
-  fromException = enumExceptionFromException
-
--- |Convert an 'IterException' to an 'EnumException'.  Meant to be used
--- within an @Enumerator@ to signify that it could not handle the
--- @IterException@.
-wrapIterExc :: IterException -> EnumException
-wrapIterExc = EnumException . EnumUnhandledIterException
 
 -- iteratee exceptions
 

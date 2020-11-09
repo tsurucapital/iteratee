@@ -8,7 +8,6 @@
 module Data.Iteratee.Base (
   -- * Types
   Stream (..)
-  ,StreamStatus (..)
   -- ** Exception types
   ,module Data.Iteratee.Exception
   -- ** Iteratees
@@ -16,8 +15,6 @@ module Data.Iteratee.Base (
   -- * Functions
   -- ** Control functions
   ,run
-  ,tryRun
-  ,mapIteratee
   ,ilift
   -- ** Creating Iteratees
   ,idone
@@ -30,21 +27,17 @@ module Data.Iteratee.Base (
   -- * Classes
   ,module Data.NullPoint
   ,module Data.Nullable
-  ,module Data.Iteratee.Base.LooseMap
 )
 where
 
 import Prelude hiding (null)
-import Data.Iteratee.Base.LooseMap
 import Data.Iteratee.Exception
 import Data.Nullable
 import Data.NullPoint
-import Data.Monoid
 
 import Control.Monad.Catch as CIO
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
-import Control.Applicative hiding (empty)
 import qualified Control.Exception as E
 import Data.Data
 
@@ -83,13 +76,6 @@ instance Functor Stream where
   fmap f (Chunk xs) = Chunk $ f xs
   fmap _ (EOF mErr) = EOF mErr
 
--- |Describe the status of a stream of data.
-data StreamStatus =
-  DataRemaining
-  | EofNoError
-  | EofError SomeException
-  deriving (Show, Typeable)
-
 -- ----------------------------------------------
 -- create exception type hierarchy
 
@@ -108,13 +94,13 @@ newtype Iteratee s m a = Iteratee{ runIter :: forall r.
 
 -- ----------------------------------------------
 
-idone :: Monad m => a -> Stream s -> Iteratee s m a
+idone :: a -> Stream s -> Iteratee s m a
 idone a s = Iteratee $ \onDone _ -> onDone a s
 
 icont :: (Stream s -> Iteratee s m a) -> Maybe SomeException -> Iteratee s m a
 icont k e = Iteratee $ \_ onCont -> onCont k e
 
-liftI :: Monad m => (Stream s -> Iteratee s m a) -> Iteratee s m a
+liftI :: (Stream s -> Iteratee s m a) -> Iteratee s m a
 liftI k = Iteratee $ \_ onCont -> onCont k Nothing
 
 -- Monadic versions, frequently used by enumerators
@@ -128,13 +114,13 @@ icontM
      -> m (Iteratee s m a)
 icontM k e = return $ Iteratee $ \_ onCont -> onCont k e
 
-instance (Functor m, Monad m) => Functor (Iteratee s m) where
+instance Monad m => Functor (Iteratee s m) where
   fmap f m = Iteratee $ \onDone onCont ->
     let od = onDone . f
         oc = onCont . (fmap f .)
     in runIter m od oc
 
-instance (Functor m, Monad m, Nullable s) => Applicative (Iteratee s m) where
+instance (Monad m, Nullable s) => Applicative (Iteratee s m) where
     pure x  = idone x (Chunk empty)
     m <*> a = m >>= flip fmap a
 
@@ -145,7 +131,7 @@ instance (Monad m, Nullable s) => Monad (Iteratee s m) where
   (>>=) = bindIteratee
 
 {-# INLINE bindIteratee #-}
-bindIteratee :: (Monad m, Nullable s)
+bindIteratee :: (Nullable s)
     => Iteratee s m a
     -> (a -> Iteratee s m b)
     -> Iteratee s m b
@@ -198,29 +184,6 @@ run iter = runIter iter onDone onCont
    onCont  _ (Just e) = E.throw e
    onCont' _ Nothing  = E.throw EofException
    onCont' _ (Just e) = E.throw e
-
--- |Run an iteratee, returning either the result or the iteratee exception.
--- Note that only internal iteratee exceptions will be returned; exceptions
--- thrown with @Control.Exception.throw@ or @Control.Monad.CatchIO.throw@ will
--- not be returned.
--- See 'Data.Iteratee.Exception.IFException' for details.
-tryRun :: (Exception e, Monad m) => Iteratee s m a -> m (Either e a)
-tryRun iter = runIter iter onDone onCont
-  where
-    onDone  x _ = return $ Right x
-    onCont  k Nothing  = runIter (k (EOF Nothing)) onDone onCont'
-    onCont  _ (Just e) = return $ maybeExc e
-    onCont' _ Nothing  = return $ maybeExc (toException EofException)
-    onCont' _ (Just e) = return $ maybeExc e
-    maybeExc e = maybe (Left (E.throw e)) Left (fromException e)
-
--- |Transform a computation inside an @Iteratee@.
-mapIteratee :: (NullPoint s, Monad n, Monad m) =>
-  (m a -> n b)
-  -> Iteratee s m a
-  -> Iteratee s n b
-mapIteratee f = lift . f . run
-{-# DEPRECATED mapIteratee "This function will be removed, compare to 'ilift'" #-}
 
 -- | Lift a computation in the inner monad of an iteratee.
 --

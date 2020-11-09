@@ -20,10 +20,9 @@ module Data.Iteratee.IO.Handle(
 )
 
 where
-
-import Data.Iteratee.Base.ReadableChunk
+import Data.ByteString (ByteString, packCStringLen)
+import Data.Word (Word8)
 import Data.Iteratee.Iteratee
-import Data.Iteratee.Binary()
 
 import Control.Exception
 import Control.Monad
@@ -31,33 +30,27 @@ import Control.Monad.Catch as CIO
 import Control.Monad.IO.Class
 
 import Foreign.Ptr
-import Foreign.Storable
 import Foreign.Marshal.Alloc
 
 import System.IO
-
-#if MIN_VERSION_exceptions(0,6,0)
-#else
-type MonadMask = MonadCatch
-#endif
 
 -- ------------------------------------------------------------------------
 -- Binary Random IO enumerators
 
 makeHandleCallback ::
-  (MonadIO m, MonadCatch m, NullPoint s, ReadableChunk s el) =>
-  Ptr el
+  (MonadIO m) =>
+  Ptr Word8
   -> Int
   -> Handle
   -> st
-  -> m (Either SomeException ((Bool, st), s))
+  -> m (Either SomeException ((Bool, st), ByteString))
 makeHandleCallback p bsize h st = do
   n' <- liftIO (CIO.try $ hGetBuf h p bsize :: IO (Either SomeException Int))
   case n' of
     Left e -> return $ Left e
     Right 0 -> return $ Right ((False, st), empty)
     Right n -> liftM (\s -> Right ((True, st), s)) $
-                 readFromPtr p (fromIntegral n)
+                liftIO $ packCStringLen (castPtr p, fromIntegral n)
 
 
 -- |The (monadic) enumerator of a file Handle.  This version enumerates
@@ -65,13 +58,12 @@ makeHandleCallback p bsize h st = do
 -- the iteratee.  In particular, seeking is not supported.
 -- Data is read into a buffer of the specified size.
 enumHandle ::
- forall s el m a.(NullPoint s, ReadableChunk s el, MonadIO m, MonadMask m) =>
+ forall m a.(MonadIO m, MonadMask m) =>
   Int -- ^Buffer size (number of elements per read)
   -> Handle
-  -> Enumerator s m a
-enumHandle bs h i =
-  let bufsize = bs * sizeOf (undefined :: el)
-  in CIO.bracket (liftIO $ mallocBytes bufsize)
+  -> Enumerator ByteString m a
+enumHandle bufsize h i =
+  CIO.bracket (liftIO $ mallocBytes bufsize)
                  (liftIO . free)
                  (\p -> enumFromCallback (makeHandleCallback p bufsize h) () i)
 
@@ -79,17 +71,14 @@ enumHandle bs h i =
 -- the Iteratee.
 enumHandleCatch
  ::
- forall e s el m a.(IException e,
-                    NullPoint s,
-                    ReadableChunk s el,
+ forall e m a.(IException e,
                     MonadIO m, MonadMask m) =>
-  Int -- ^Buffer size (number of elements per read)
+  Int -- ^Buffer size (number of bytes per read)
   -> Handle
   -> (e -> m (Maybe EnumException))
-  -> Enumerator s m a
-enumHandleCatch bs h handler i =
-  let bufsize = bs * sizeOf (undefined :: el)
-  in CIO.bracket (liftIO $ mallocBytes bufsize)
+  -> Enumerator ByteString m a
+enumHandleCatch bufsize h handler i =
+  CIO.bracket (liftIO $ mallocBytes bufsize)
                  (liftIO . free)
                  (\p -> enumFromCallbackCatch (makeHandleCallback p bufsize h) handler () i)
 
@@ -98,10 +87,10 @@ enumHandleCatch bs h handler i =
 -- supports RandomIO (seek requests).
 -- Data is read into a buffer of the specified size.
 enumHandleRandom ::
- forall s el m a.(NullPoint s, ReadableChunk s el, MonadIO m, MonadMask m) =>
+ forall m a.(MonadIO m, MonadMask m) =>
   Int -- ^ Buffer size (number of elements per read)
   -> Handle
-  -> Enumerator s m a
+  -> Enumerator ByteString m a
 enumHandleRandom bs h i = enumHandleCatch bs h handler i
   where
     handler (SeekException off) =
@@ -113,36 +102,36 @@ enumHandleRandom bs h i = enumHandleCatch bs h handler i
 -- ----------------------------------------------
 -- File Driver wrapper functions.
 
-enumFile' :: (NullPoint s, MonadIO m, MonadMask m, ReadableChunk s el) =>
-  (Int -> Handle -> Enumerator s m a)
+enumFile' :: (MonadIO m, MonadMask m) =>
+  (Int -> Handle -> Enumerator ByteString m a)
   -> Int -- ^Buffer size
   -> FilePath
-  -> Enumerator s m a
+  -> Enumerator ByteString m a
 enumFile' enumf bufsize filepath iter = CIO.bracket
   (liftIO $ openBinaryFile filepath ReadMode)
   (liftIO . hClose)
   (flip (enumf bufsize) iter)
 
 enumFile ::
-  (NullPoint s, MonadIO m, MonadMask m, ReadableChunk s el)
+  (MonadIO m, MonadMask m)
   => Int                 -- ^Buffer size
   -> FilePath
-  -> Enumerator s m a
+  -> Enumerator ByteString m a
 enumFile = enumFile' enumHandle
 
 enumFileRandom ::
-  (NullPoint s, MonadIO m, MonadMask m, ReadableChunk s el)
+  (MonadIO m, MonadMask m)
   => Int                 -- ^Buffer size
   -> FilePath
-  -> Enumerator s m a
+  -> Enumerator ByteString m a
 enumFileRandom = enumFile' enumHandleRandom
 
 -- |Process a file using the given @Iteratee@.  This function wraps
 -- @enumHandle@ as a convenience.
 fileDriverHandle
-  :: (NullPoint s, MonadIO m, MonadMask m, ReadableChunk s el) =>
+  :: (MonadIO m, MonadMask m) =>
      Int                      -- ^Buffer size (number of elements)
-     -> Iteratee s m a
+     -> Iteratee ByteString m a
      -> FilePath
      -> m a
 fileDriverHandle bufsize iter filepath =
@@ -150,9 +139,9 @@ fileDriverHandle bufsize iter filepath =
 
 -- |A version of @fileDriverHandle@ that supports seeking.
 fileDriverRandomHandle
-  :: (NullPoint s, MonadIO m, MonadMask m, ReadableChunk s el) =>
+  :: (MonadIO m, MonadMask m) =>
      Int                      -- ^ Buffer size (number of elements)
-     -> Iteratee s m a
+     -> Iteratee ByteString m a
      -> FilePath
      -> m a
 fileDriverRandomHandle bufsize iter filepath =

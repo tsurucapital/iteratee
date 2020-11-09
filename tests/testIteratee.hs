@@ -11,7 +11,6 @@ import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck
 
 import           Data.Iteratee hiding (head, break)
-import qualified Data.Iteratee.Char as IC
 import qualified Data.Iteratee as Iter
 import           Data.Functor.Identity
 import qualified Data.List as List (groupBy, unfoldr)
@@ -309,7 +308,7 @@ prop_group xs n = n > 0 ==>
         groups = List.unfoldr groupOne xs
           where groupOne [] = Nothing
                 groupOne elts@(_:_) = Just . splitAt n $ elts
-                           
+
 prop_groupBy xs m = m > 0 ==>
                   runner2 (enumPure1Chunk xs $ Iter.groupBy pred stream2list)
                   == runner1 (enumPure1Chunk (List.groupBy pred xs) stream2list)

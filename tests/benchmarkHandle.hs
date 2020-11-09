@@ -43,12 +43,6 @@ testHdByte = fileDriverHandle bufSize len file >> return ()
   len :: Monad m => Iteratee ByteString m Int
   len = length
 
-testFdMapReduce :: Int -> IO ()
-testFdMapReduce n = fileDriverFd bufSize sum file >> return ()
- where
-  sum :: Iteratee ByteString IO Word8
-  sum = getSum `fmap` mapReduce n (Sum . B.foldl' (+) 0)
-
 testFdFold :: IO ()
 testFdFold = fileDriverFd bufSize sum file >> return ()
  where
@@ -67,8 +61,5 @@ main = defaultMain
    ]
   ,bgroup "folds" [
      bench "Fd/fold" testFdFold
-    ,bench "Fd/mapReduce 2" $ testFdMapReduce 2
-    ,bench "Fd/mapReduce 4" $ testFdMapReduce 4
-    ,bench "Fd/mapReduce 8" $ testFdMapReduce 8
    ]
   ]

@@ -59,21 +59,16 @@ library
     Data.NullPoint
     Data.Iteratee
     Data.Iteratee.Base
-    Data.Iteratee.Base.ReadableChunk
-    Data.Iteratee.Base.LooseMap
-    Data.Iteratee.Binary
-    Data.Iteratee.Char
     Data.Iteratee.Exception
     Data.Iteratee.IO
     Data.Iteratee.IO.Handle
-    Data.Iteratee.IO.Interact
     Data.Iteratee.Iteratee
     Data.Iteratee.ListLike
 
   other-modules:
     Data.Iteratee.IO.Base
 
-  ghc-options:   -Wall -O2
+  ghc-options:   -Wall -O2 -Wredundant-constraints
   if impl(ghc >= 6.8)
     ghc-options: -fwarn-tabs
 

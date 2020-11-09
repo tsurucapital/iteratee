@@ -20,7 +20,6 @@ module Data.Iteratee.Iteratee (
   ,isStreamFinished
   -- ** Chunkwise Iteratees
   ,mapChunksM_
-  ,mapReduce
   ,getChunk
   ,getChunks
   -- ** Nested iteratee combinators
@@ -63,9 +62,7 @@ import Data.Iteratee.Base
 
 import Control.Exception
 import Control.Monad.Trans.Class
-import Control.Parallel
 import Data.Maybe
-import Data.Monoid
 import Data.Typeable
 
 -- exception helpers
@@ -84,9 +81,8 @@ throwErr e = icont (const (throwErr e)) (Just e)
 
 -- |Report and propagate a recoverable error.  This error can be handled by
 -- both 'enumFromCallbackCatch' and 'checkErr'.
-throwRecoverableErr ::
- (Monad m) =>
-  SomeException
+throwRecoverableErr
+  :: SomeException
   -> (Stream s -> Iteratee s m a)
   -> Iteratee s m a
 throwRecoverableErr e i = icont i (Just e)
@@ -138,9 +134,9 @@ seek o = throwRecoverableErr (toException $ SeekException o) (const identity)
 
 -- | Map a monadic function over the chunks of the stream and ignore the
 -- result.  Useful for creating efficient monadic iteratee consumers, e.g.
--- 
+--
 -- >  logger = mapChunksM_ (liftIO . putStrLn)
--- 
+--
 -- these can be efficiently run in parallel with other iteratees via
 -- @Data.Iteratee.ListLike.zip@.
 mapChunksM_ :: (Monad m, Nullable s) => (s -> m b) -> Iteratee s m ()
@@ -152,37 +148,8 @@ mapChunksM_ f = liftI step
     step s@(EOF _) = idone () s
 {-# INLINE mapChunksM_ #-}
 
--- | Perform a parallel map/reduce.  The `bufsize` parameter controls
--- the maximum number of chunks to read at one time.  A larger bufsize
--- allows for greater parallelism, but will require more memory.
--- 
--- Implementation of `sum`
--- 
--- > sum :: (Monad m, LL.ListLike s, Nullable s) => Iteratee s m Int64
--- > sum = getSum <$> mapReduce 4 (Sum . LL.sum)
-mapReduce ::
-  (Monad m, Nullable s, Monoid b)
-  => Int               -- ^ maximum number of chunks to read
-  -> (s -> b)          -- ^ map function
-  -> Iteratee s m b
-mapReduce bufsize f = liftI (step (0, []))
- where
-  step a@(!buf,acc) (Chunk xs)
-    | nullC xs = liftI (step a)
-    | buf >= bufsize =
-        let acc'  = mconcat acc
-            b'    = f xs
-        in b' `par` acc' `pseq` liftI (step (0,[b' `mappend` acc']))
-    | otherwise     =
-        let b' = f xs
-        in b' `par` liftI (step (succ buf,b':acc))
-  step (_,acc) s@(EOF Nothing) =
-    idone (mconcat acc) s
-  step acc       (EOF (Just err))  =
-    throwRecoverableErr err (step acc)
-
 -- | Get the current chunk from the stream.
-getChunk :: (Monad m, Nullable s, NullPoint s) => Iteratee s m s
+getChunk :: (Monad m, Nullable s) => Iteratee s m s
 getChunk = liftI step
  where
   step (Chunk xs)
@@ -215,7 +182,7 @@ type Enumeratee sFrom sTo (m :: * -> *) a =
 
 -- | Utility function for creating enumeratees.  Typical usage is demonstrated
 -- by the @breakE@ definition.
--- 
+--
 -- > breakE
 -- >   :: (Monad m, LL.ListLike s el, NullPoint s)
 -- >   => (el -> Bool)
@@ -229,12 +196,12 @@ type Enumeratee sFrom sTo (m :: * -> *) a =
 -- >           | LL.null tail' -> eneeCheckIfDone (liftI . step) . k $ Chunk str'
 -- >           | otherwise     -> idone (k $ Chunk str') (Chunk tail')
 -- >   step k stream           =  idone (k stream) stream
--- 
+--
 eneeCheckIfDone ::
  (Monad m, NullPoint elo) =>
   ((Stream eli -> Iteratee eli m a) -> Iteratee elo m (Iteratee eli m a))
   -> Enumeratee elo eli m a
-eneeCheckIfDone f inner = Iteratee $ \od oc -> 
+eneeCheckIfDone f inner = Iteratee $ \od oc ->
   let onDone x s = od (idone x s) (Chunk empty)
       onCont k Nothing  = runIter (f k) od oc
       onCont _ (Just e) = runIter (throwErr e) od oc
@@ -243,10 +210,10 @@ eneeCheckIfDone f inner = Iteratee $ \od oc ->
 -- | Convert one stream into another with the supplied mapping function.
 -- This function operates on whole chunks at a time, contrasting to
 -- @mapStream@ which operates on single elements.
--- 
+--
 -- > unpacker :: Enumeratee B.ByteString [Word8] m a
 -- > unpacker = mapChunks B.unpack
--- 
+--
 mapChunks :: (Monad m, NullPoint s) => (s -> s') -> Enumeratee s s' m a
 mapChunks f = eneeCheckIfDone (liftI . step)
  where
@@ -289,7 +256,7 @@ unfoldConvStream f acc0 = eneeCheckIfDone (check acc0)
 
 -- | Collapse a nested iteratee.  The inner iteratee is terminated by @EOF@.
 --   Errors are propagated through the result.
--- 
+--
 --  The stream resumes from the point of the outer iteratee; any remaining
 --  input in the inner iteratee will be lost.
 --  Differs from 'Control.Monad.join' in that the inner iteratee is terminated,
@@ -367,10 +334,10 @@ enumErr e iter = runIter iter onDone onCont
 -- Run the second enumeratee within the first.  In this example, stream2list
 -- is run within the 'take 10', which is itself run within 'take 15', resulting
 -- in 15 elements being consumed
--- 
+--
 -- >>> run =<< enumPure1Chunk [1..1000 :: Int] (joinI $ (I.take 15 ><> I.take 10) I.stream2list)
 -- [1,2,3,4,5,6,7,8,9,10]
--- 
+--
 (><>) ::
  (Nullable s1, Monad m)
   => (forall x . Enumeratee s1 s2 m x)
@@ -389,7 +356,7 @@ f <>< g = joinI . g . f
 -- | Combine enumeration over two streams.  The merging enumeratee would
 -- typically be the result of 'Data.Iteratee.ListLike.merge' or
 -- 'Data.Iteratee.ListLike.mergeByChunks' (see @merge@ for example).
-mergeEnums :: 
+mergeEnums ::
   (Nullable s2, Nullable s1, Monad m)
   => Enumerator s1 m a                   -- ^ inner enumerator
   -> Enumerator s2 (Iteratee s1 m) a     -- ^ outer enumerator
@@ -399,7 +366,7 @@ mergeEnums e1 e2 etee i = e1 $ e2 (joinI . etee $ ilift lift i) >>= run
 {-# INLINE mergeEnums #-}
 
 -- | The pure 1-chunk enumerator
--- 
+--
 -- It passes a given list of elements to the iteratee in one chunk
 -- This enumerator does no IO and is useful for testing of base parsing
 enumPure1Chunk :: (Monad m) => s -> Enumerator s m a
@@ -409,7 +376,7 @@ enumPure1Chunk str iter = runIter iter idoneM onCont
     onCont k e       = return $ icont k e
 
 -- | Enumerate chunks from a list
--- 
+--
 enumList :: (Monad m) => [s] -> Enumerator s m a
 enumList chunks = go chunks
  where
@@ -422,7 +389,7 @@ enumList chunks = go chunks
 {-# INLINABLE enumList #-}
 
 -- | Checks if an iteratee has finished.
--- 
+--
 -- This enumerator runs the iteratee, performing any monadic actions.
 -- If the result is True, the returned iteratee is done.
 enumCheckIfDone :: (Monad m) => Iteratee s m a -> m (Bool, Iteratee s m a)
