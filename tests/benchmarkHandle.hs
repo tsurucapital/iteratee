@@ -1,6 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
-module BenchIO where
+module Main where
 
 import Prelude hiding (null, length)
 import Data.ByteString (ByteString)
@@ -9,7 +9,6 @@ import Criterion.Main
 import Data.Monoid
 import Data.Word
 import Data.Iteratee
-import Data.Iteratee.Parallel
 import Data.Iteratee.Base.ReadableChunk
 import Data.Iteratee.IO.Fd (fileDriverFd)
 import Data.Iteratee.IO.Handle (fileDriverHandle)
@@ -44,37 +43,23 @@ testHdByte = fileDriverHandle bufSize len file >> return ()
   len :: Monad m => Iteratee ByteString m Int
   len = length
 
-testFdMapReduce :: Int -> IO ()
-testFdMapReduce n = fileDriverFd bufSize sum file >> return ()
- where
-  sum :: Iteratee ByteString IO Word8
-  sum = getSum `fmap` mapReduce n (Sum . B.foldl' (+) 0)
-
 testFdFold :: IO ()
 testFdFold = fileDriverFd bufSize sum file >> return ()
  where
   sum :: Iteratee ByteString IO Word8
   sum = foldl' (+) 0
 
-main = defaultMain (stringIO ++ ioBenches)
-
-stringIO =
-  [ bgroup "String"
-    [bench "Fd" testFdString
+main = defaultMain
+  [
+   bgroup "String" [
+     bench "Fd" testFdString
     ,bench "Hd with String" testHdString
-    ]
-  ]
-
-ioBenches =
-  [bgroup "ByteString" [
+   ]
+  ,bgroup "ByteString" [
      bench "Fd" testFdByte
     ,bench "Hd" testHdByte
    ]
-
   ,bgroup "folds" [
      bench "Fd/fold" testFdFold
-    ,bench "Fd/mapReduce 2" $ testFdMapReduce 2
-    ,bench "Fd/mapReduce 4" $ testFdMapReduce 4
-    ,bench "Fd/mapReduce 8" $ testFdMapReduce 8
    ]
   ]

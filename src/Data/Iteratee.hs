@@ -8,10 +8,10 @@ Iteratees can be thought of as stream processor combinators.  Iteratees are comb
 > import Data.Iteratee as I
 > import Data.Iteratee.IO
 > import Data.ByteString
-> 
+>
 > byteCounter :: Monad m => Iteratee ByteString m Int
 > byteCounter = I.length
-> 
+>
 > countBytes = do
 >   i' <- enumFile 8192 "/usr/share/dict/words" byteCounter
 >   result <- run i'
@@ -44,12 +44,14 @@ Many more functions are provided, and there are many other useful ways to combin
 -}
 
 module Data.Iteratee (
-  module I
+  module Data.Iteratee.ListLike,
+  fileDriver,
+  fileDriverVBuf,
+  fileDriverRandom,
+  fileDriverRandomVBuf
 )
 
 where
 
-import Data.Iteratee.Binary   as I
-import Data.Iteratee.IO       as I
-import Data.Iteratee.ListLike as I
-import Data.Iteratee.PTerm    as I
+import Data.Iteratee.IO
+import Data.Iteratee.ListLike
