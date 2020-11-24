@@ -71,7 +71,7 @@ enumHandle bufsize h i =
 -- the Iteratee.
 enumHandleCatch
  ::
- forall e m a.(IException e,
+ forall e m a.(Exception e,
                     MonadIO m, MonadMask m) =>
   Int -- ^Buffer size (number of bytes per read)
   -> Handle

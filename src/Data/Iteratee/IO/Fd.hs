@@ -80,7 +80,7 @@ enumFd bufsize fd iter =
 
 -- |A variant of enumFd that catches exceptions raised by the @Iteratee@.
 enumFdCatch
- :: forall e m a.(IException e, MonadIO m, MonadMask m)
+ :: forall e m a.(Exception e, MonadIO m, MonadMask m)
     => Int
     -> Fd
     -> (e -> m (Maybe EnumException))
@@ -102,7 +102,7 @@ enumFdRandom bs fd iter = enumFdCatch bs fd handler iter
   where
     handler (SeekException off) =
       liftM (either
-             (const . Just $ enStrExc "Error seeking within file descriptor")
+             (const . Just $ EnumException $ ErrorCall "Error seeking within file descriptor")
              (const Nothing))
             . liftIO . myfdSeek fd AbsoluteSeek $ fromIntegral off
 
