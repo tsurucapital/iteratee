@@ -35,7 +35,7 @@ instance Arbitrary SomeException where
     str <- arbitrary
     off <- fromInteger <$> (arbitrary :: Gen Integer)
     elements [tE DivergentException, tE (SeekException off),
-      tE EofException, iterStrExc str]
+      tE EofException]
 
 instance (Num a, Ord a, Arbitrary a, Monad m) => Arbitrary (Iteratee [a] m [a]) where
   arbitrary = do
